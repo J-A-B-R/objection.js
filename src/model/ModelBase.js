@@ -2,132 +2,29 @@ import _ from 'lodash';
 import tv4 from 'tv4';
 import tv4Formats from 'tv4-formats';
 import ValidationError from '../ValidationError';
+import hiddenDataGetterSetter from '../utils/decorators/hiddenDataGetterSetter';
 import {inherits} from '../utils/classUtils';
-import {memoize} from '../utils/decorators';
+import memoize from '../utils/decorators/memoize';
 
 /**
  * @typedef {Object} ModelOptions
  *
  * @property {boolean} [patch]
- *    If true the json is treated as a patch and the `required` field of the json schema is
- *    ignored in the validation. This allows us to create models with a subset of required
- *    properties for patch operations.
- *
  * @property {boolean} [skipValidation]
- *    If true the json schema validation is skipped.
  */
 
-/**
- * Base class for models.
- *
- * ModelBase provides a mechanism for automatic JSON validation and a way to attach
- * functionality to plain javascript objects. A subclass can be created like this:
- *
- * ```js
- * function Person() {
- *   ModelBase.apply(this, arguments);
- * }
- *
- * ModelBase.extend(Person);
- *
- * Person.prototype.fullName = function () {
- *   return this.firstName + ' ' + this.lastName;
- * };
- *
- * Person.jsonSchema = {
- *   type: 'object',
- *   properties: {
- *     id: {type: 'integer'},
- *     firstName: {type: 'string'},
- *     lastName: {type: 'string'}
- *   }
- * };
- * ```
- *
- * Use `ModelBase.from*Json` methods to create models from JSON objects:
- *
- * ```js
- * var person = Person.fromJson({firstName: 'Jennifer', lastName: 'Lawrence'});
- *
- * console.log(person.firstName); // --> 'Jennifer'
- * console.log(person.lastName); // --> 'Lawrence'
- * console.log(person.fullName()); // --> 'Jennifer Lawrence'
- *
- * // This throws because the schema validation fails.
- * var person2 = Person.fromJson({firstName: 10});
- * ```
- *
- * Properties that are prefixed with '$' are excluded from all JSON representations:
- *
- * ```js
- * var person = Person.fromJson({firstName: 'Jennifer');
- * person.$spam = 100;
- *
- * console.log(person); // --> {firstName: 'Jennifer'}
- * console.log(person.$toJson()); // --> {firstName: 'Jennifer'}
- * ```
- *
- * ModelBase makes it possible to have a different database representation for a model.
- * For example if your column names are snake_cased in the database but you want to use
- * camelCased properties in the code and outside the server you can do this:
- *
- * ```js
- * // This is called when an object is serialized to database format.
- * Person.prototype.$formatDatabaseJson = function (json) {
- *   // Call superclass implementation.
- *   json = ModelBase.prototype.$formatDatabaseJson.call(this, json);
- *
- *   return _.mapKeys(json, function (value, key) {
- *     return _.snakeCase(key);
- *   });
- * };
- *
- * // This is called when an object is read from database.
- * Person.prototype.$parseDatabaseJson = function (json) {
- *   json = _.mapKeys(json, function (value, key) {
- *     return _.camelCase(key);
- *   });
- *
- *   // Call superclass implementation.
- *   return ModelBase.prototype.$parseDatabaseJson.call(this, json);
- * };
- * ```
- *
- * @constructor
- */
 export default class ModelBase {
 
   /**
-   * The optional schema against which the JSON is validated.
-   *
-   * The jsonSchema can be dynamically modified in the `$beforeValidate` method.
-   *
-   * Must follow http://json-schema.org specification. If null no validation is done.
-   *
-   * @see $beforeValidate()
-   * @see $validate()
-   * @see $afterValidate()
-   *
    * @type {Object}
    */
   static jsonSchema = null;
 
   /**
-   * This is called before validation.
-   *
-   * Here you can dynamically edit the jsonSchema if needed.
-   *
    * @param {Object} jsonSchema
-   *    A deep clone of this class's jsonSchema.
-   *
    * @param {Object} json
-   *    The JSON object to be validated.
-   *
    * @param {ModelOptions=} options
-   *    Optional options.
-   *
    * @return {Object}
-   *    The (possibly) modified jsonSchema.
    */
   $beforeValidate(jsonSchema, json, options) {
     /* istanbul ignore next */
@@ -135,23 +32,10 @@ export default class ModelBase {
   }
 
   /**
-   * Validates the given JSON object.
-   *
-   * Calls `$beforeValidation` and `$afterValidation` methods. This method is called
-   * automatically from `fromJson` and `$setJson` methods. This method can also be
-   * called explicitly when needed.
-   *
    * @throws {ValidationError}
-   *    If validation fails.
-   *
    * @param {Object=} json
-   *    If not given ==> this.
-   *
    * @param {ModelOptions=} options
-   *    Optional options.
-   *
    * @return {Object}
-   *    The input json
    */
   $validate(json = this, options = {}) {
     const ModelClass = this.constructor;
@@ -179,142 +63,69 @@ export default class ModelBase {
   }
 
   /**
-   * This is called after successful validation.
-   *
-   * You can do further validation here and throw a ValidationError if something goes wrong.
-   *
    * @param {Object=} json
-   *    The JSON object to validate.
-   *
    * @param {ModelOptions=} options
-   *    Optional options.
    */
   $afterValidate(json, options) {
     // Do nothing by default.
   }
 
   /**
-   * This is called when a ModelBase is created from a database JSON object.
-   *
-   * Converts the JSON object from the database format to the internal format.
-   *
-   * @note This function must handle the case where any subset of the columns comes
-   *    in the `json` argument. You cannot assume that all columns are present as it
-   *    depends on the select statement. There can also be additional columns because
-   *    of join clauses, aliases etc.
-   *
-   * @note If you override this remember to call the super class's implementation.
-   *
    * @param {Object} json
-   *    The JSON object in database format.
-   *
    * @return {Object}
-   *    The JSON object in internal format.
    */
   $parseDatabaseJson(json) {
     return json;
   }
 
   /**
-   * This is called when a ModelBase is converted to database format.
-   *
-   * Converts the JSON object from the internal format to the database format.
-   *
-   * @note If you override this remember to call the super class's implementation.
-   *
    * @param {Object} json
-   *    The JSON object in internal format.
-   *
    * @return {Object}
-   *    The JSON object in database format.
    */
   $formatDatabaseJson(json) {
     return json;
   }
 
   /**
-   * This is called when a ModelBase is created from a JSON object.
-   *
-   * Converts the JSON object to the internal format.
-   *
-   * @note If you override this remember to call the super class's implementation.
-   *
    * @param {Object} json
-   *    The JSON object in external format.
-   *
    * @param {ModelOptions=} options
-   *    Optional options.
-   *
    * @return {Object}
-   *    The JSON object in internal format.
    */
   $parseJson(json, options) {
     return json;
   }
 
   /**
-   * This is called when a ModelBase is converted to JSON.
-   *
-   * @note Remember to call the super class's implementation.
-   *
    * @param {Object} json
-   *    The JSON object in internal format
-   *
    * @return {Object}
-   *    The JSON object in external format.
    */
   $formatJson(json) {
     return json;
   }
 
   /**
-   * Exports this model as a database JSON object.
-   *
-   * Calls `$formatDatabaseJson()`.
-   *
    * @return {Object}
-   *    This model as a JSON object in database format.
    */
   $toDatabaseJson() {
     return this.$$toJson(true, null, null);
   }
 
   /**
-   * Exports this model as a JSON object.
-   *
-   * Calls `$formatJson()`.
-   *
    * @return {Object}
-   *    This model as a JSON object.
    */
   $toJson() {
     return this.$$toJson(false, null, null);
   }
 
-  /**
-   * Alias for `this.$toJson()`.
-   *
-   * For JSON.stringify compatibility.
-   */
   toJSON() {
     return this.$toJson();
   }
 
   /**
-   * Sets the values from a JSON object.
-   *
-   * Validates the JSON before setting values. Calls `this.$parseJson()`.
-   *
    * @param {Object} json
-   *    The JSON object to set.
-   *
    * @param {ModelOptions=} options
-   *    Optional options.
-   *
-   * @returns {ModelBase} `this` for chaining.
-   *
+   * @returns {ModelBase}
    * @throws ValidationError
-   *    If validation fails.
    */
   $setJson(json, options = {}) {
     json = json || {};
@@ -344,14 +155,8 @@ export default class ModelBase {
   }
 
   /**
-   * Sets the values from a JSON object in database format.
-   *
-   * Calls `this.$parseDatabaseJson()`.
-   *
    * @param {Object} json
-   *    The JSON object in database format.
-   *
-   * @returns {ModelBase} `this` for chaining.
+   * @returns {ModelBase}
    */
   $setDatabaseJson(json = {}) {
     json = this.$parseDatabaseJson(json);
@@ -364,13 +169,8 @@ export default class ModelBase {
   }
 
   /**
-   * Sets the values from another model or object.
-   *
-   * Unlike $setJson, this doesn't call any `$parseJson` methods or validate the input.
-   * This simply sets each value in the object to this object.
-   *
    * @param {Object} obj
-   * @returns {ModelBase} `this` for chaining.
+   * @returns {ModelBase}
    */
   $set(obj) {
     const self = this;
@@ -385,41 +185,8 @@ export default class ModelBase {
   }
 
   /**
-   * Omits a set of properties.
-   *
-   * The selected properties are set to `undefined`. Note that this is done in-place.
-   * Properties are set to undefined instead of deleting them for performance reasons
-   * (V8 doesn't like delete).
-   *
-   * ```js
-   * var json = person
-   *   .fromJson({firstName: 'Jennifer', lastName: 'Lawrence', age: 24})
-   *   .$omit('lastName')
-   *   .toJSON();
-   *
-   * console.log(_.has(json, 'lastName')); // --> false
-   * ```
-   *
-   * ```js
-   * var json = person
-   *   .fromJson({firstName: 'Jennifer', lastName: 'Lawrence', age: 24})
-   *   .$omit(['lastName'])
-   *   .toJSON();
-   *
-   * console.log(_.has(json, 'lastName')); // --> false
-   * ```
-   *
-   * ```js
-   * var json = person
-   *   .fromJson({firstName: 'Jennifer', lastName: 'Lawrence', age: 24})
-   *   .$omit({lastName: true})
-   *   .toJSON();
-   *
-   * console.log(_.has(json, 'lastName')); // --> false
-   * ```
-   *
    * @param {string|Array.<string>|Object.<string, boolean>} keys
-   * @returns {ModelBase} `this` for chaining.
+   * @returns {ModelBase}
    */
   $omit() {
     if (arguments.length === 1 && _.isObject(arguments[0])) {
@@ -438,99 +205,20 @@ export default class ModelBase {
   }
 
   /**
-   * Omits a set of properties from the json representation.
-   *
-   * ```js
-   * let person = Person.fromJson({firstName: 'Jennifer', lastName: 'Aniston'});
-   * person.$omitFromJson('lastName');
-   * console.log(person.toJSON()); // --> {firstName: 'Jennifer'}
-   * console.log(person); // --> {firstName: 'Jennifer', lastName: 'Aniston'}
-   * ```
-   *
-   * @ignore
-   * @param {string|Array.<string>|Object.<string, boolean>} keys
-   * @returns {ModelBase}
+   * @param {Array.<string>=} keys
+   * @returns {Array.<string>}
    */
-  $omitFromJson() {
-    if (arguments.length === 1 && _.isObject(arguments[0])) {
-      let keys = arguments[0];
-
-      if (_.isArray(keys)) {
-        omitFromJson(this, keys, false);
-      } else {
-        omitFromJson(this, _.keys(keys), false);
-      }
-    } else {
-      omitFromJson(this, _.toArray(arguments), false);
-    }
-
-    return this;
-  }
+  @hiddenDataGetterSetter('omitFromJson')
+  $omitFromJson(keys) {}
 
   /**
-   * Omits a set of properties from the database json representation.
-   *
-   * ```js
-   * let person = Person.fromJson({firstName: 'Jennifer', lastName: 'Aniston'});
-   * person.$omitFromDatabaseJson('lastName');
-   * console.log(person.$toDatabaseJson()); // --> {firstName: 'Jennifer'}
-   * console.log(person); // --> {firstName: 'Jennifer', lastName: 'Aniston'}
-   * ```
-   *
-   * @ignore
-   * @param {string|Array.<string>|Object.<string, boolean>} keys
-   * @returns {ModelBase}
+   * @param {Array.<string>=} keys
+   * @returns {Array.<string>}
    */
-  $omitFromDatabaseJson() {
-    if (arguments.length === 1 && _.isObject(arguments[0])) {
-      let keys = arguments[0];
-
-      if (_.isArray(keys)) {
-        omitFromJson(this, keys, true);
-      } else {
-        omitFromJson(this, _.keys(keys), true);
-      }
-    } else {
-      omitFromJson(this, _.toArray(arguments), true);
-    }
-
-    return this;
-  }
+  @hiddenDataGetterSetter('omitFromDatabaseJson')
+  $omitFromDatabaseJson(keys) {}
 
   /**
-   * Picks a set of properties.
-   *
-   * All other properties but the selected ones are set to `undefined`. Note that
-   * this is done in-place. Properties are set to undefined instead of deleting
-   * them for performance reasons (V8 doesn't like delete).
-   *
-   * ```js
-   * var json = person
-   *   .fromJson({firstName: 'Jennifer', lastName: 'Lawrence', age: 24})
-   *   .$pick('firstName', 'age')
-   *   .toJSON();
-   *
-   * console.log(_.has(json, 'lastName')); // --> false
-   * ```
-   *
-   * ```js
-   * var json = person
-   *   .fromJson({firstName: 'Jennifer', lastName: 'Lawrence', age: 24})
-   *   .$pick(['firstName', 'age'])
-   *   .toJSON();
-   *
-   * console.log(_.has(json, 'lastName')); // --> false
-   * ```
-   *
-   * ```js
-   * var json = person
-   *   .fromJson({firstName: 'Jennifer', lastName: 'Lawrence', age: 24})
-   *   .$pick({firstName: true, age: true})
-   *   .toJSON();
-   *
-   * console.log(_.has(json, 'lastName')); // --> false
-   * ```
-   *
    * @param {string|Array.<string>|Object.<string, boolean>} keys
    * @returns {ModelBase} `this` for chaining.
    */
@@ -551,8 +239,6 @@ export default class ModelBase {
   }
 
   /**
-   * Returns the values of the given properties as an array.
-   *
    * @param {Array.<string>} props
    * @return {Array.<*>}
    */
@@ -567,11 +253,6 @@ export default class ModelBase {
   }
 
   /**
-   * Returns a deep copy of this model.
-   *
-   * If this object has instances of ModelBase as properties (or arrays of them)
-   * they are cloned using their `.$clone()` method.
-   *
    * @return {ModelBase}
    */
   $clone() {
@@ -602,10 +283,8 @@ export default class ModelBase {
   }
 
   /**
-   * Makes the given constructor a subclass of this class.
-   *
    * @param {function=} subclassConstructor
-   * @return {function}
+   * @return {Constructor.<ModelBase>}
    */
   static extend(subclassConstructor) {
     if (_.isEmpty(subclassConstructor.name)) {
@@ -617,20 +296,10 @@ export default class ModelBase {
   }
 
   /**
-   * Creates a model instance from a JSON object.
-   *
-   * The object is checked against `jsonSchema` and an exception is thrown on failure.
-   *
    * @param {Object=} json
-   *    The JSON from which to create the model.
-   *
    * @param {ModelOptions=} options
-   *    Optional options.
-   *
    * @returns {Model}
-   *
    * @throws ValidationError
-   *    If validation fails.
    */
   static fromJson(json, options) {
     let model = new this();
@@ -639,11 +308,7 @@ export default class ModelBase {
   }
 
   /**
-   * Creates a model instance from a JSON object in database format.
-   *
    * @param {Object=} json
-   *    The JSON from which to create the model.
-   *
    * @returns {Model}
    */
   static fromDatabaseJson(json) {
@@ -653,12 +318,6 @@ export default class ModelBase {
   }
 
   /**
-   * Omit implementation to use.
-   *
-   * The default just sets the property to undefined for performance reasons.
-   * If the slight performance drop is not an issue for you, you can override
-   * this method to delete the property instead.
-   *
    * @param {Object} obj
    * @param {string} prop
    */
@@ -667,7 +326,6 @@ export default class ModelBase {
   }
 
   /**
-   * @ignore
    * @param {string} columnName
    * @returns {string}
    */
@@ -686,7 +344,6 @@ export default class ModelBase {
   }
 
   /**
-   * @ignore
    * @param {string} propertyName
    * @returns {string}
    */
@@ -705,9 +362,6 @@ export default class ModelBase {
   }
 }
 
-/**
- * @private
- */
 function mergeWithDefaults(jsonSchema, json) {
   let merged = null;
 
@@ -740,9 +394,6 @@ function mergeWithDefaults(jsonSchema, json) {
   }
 }
 
-/**
- * @private
- */
 function tryValidate(jsonSchema, json, options) {
   let required;
 
@@ -760,9 +411,6 @@ function tryValidate(jsonSchema, json, options) {
   }
 }
 
-/**
- * @private
- */
 function parseValidationError(report) {
   let errorHash = {};
   let index = 0;
@@ -793,9 +441,6 @@ function parseValidationError(report) {
   return new ValidationError(errorHash);
 }
 
-/**
- * @private
- */
 function toJsonImpl(self, createDbJson, omit, pick) {
   let json = {};
 
@@ -812,30 +457,17 @@ function toJsonImpl(self, createDbJson, omit, pick) {
   return json;
 }
 
-/**
- * @private
- */
 function includeInJson(self, value, key, createDbJson, omit, pick) {
-  if (createDbJson) {
-    if (self.$$omitFromDatabaseJson && self.$$omitFromDatabaseJson.indexOf(key) !== -1) {
-      return false;
-    }
-  } else {
-    if (self.$$omitFromJson && self.$$omitFromJson.indexOf(key) !== -1) {
-      return false;
-    }
-  }
+  const omitFromJson = createDbJson ? self.$omitFromDatabaseJson() : self.$omitFromJson();
 
   return key.charAt(0) !== '$'
     && !_.isFunction(value)
     && !_.isUndefined(value)
     && (!omit || !omit[key])
-    && (!pick || pick[key]);
+    && (!pick || pick[key])
+    && (!omitFromJson || omitFromJson.indexOf(key) === -1)
 }
 
-/**
- * @private
- */
 function toJsonObject(value, createDbJson) {
   if (_.isArray(value)) {
     return toJsonArray(value, createDbJson);
@@ -850,16 +482,10 @@ function toJsonObject(value, createDbJson) {
   }
 }
 
-/**
- * @private
- */
 function toJsonArray(value, createDbJson) {
   return _.map(value, (value) => toJsonObject(value, createDbJson));
 }
 
-/**
- * @private
- */
 function cloneObject(value) {
   if (_.isArray(value)) {
     return cloneArray(value);
@@ -870,16 +496,10 @@ function cloneObject(value) {
   }
 }
 
-/**
- * @private
- */
 function cloneArray(value) {
   return _.map(value, cloneObject);
 }
 
-/**
- * @private
- */
 function omitObject(model, keyObj) {
   const ModelClass = model.constructor;
 
@@ -890,9 +510,6 @@ function omitObject(model, keyObj) {
   });
 }
 
-/**
- * @private
- */
 function omitArray(model, keys) {
   const ModelClass = model.constructor;
 
@@ -903,34 +520,6 @@ function omitArray(model, keys) {
   });
 }
 
-/**
- * @private
- */
-function omitFromJson(model, keys, dbJson) {
-  if (dbJson) {
-    if (!model.$$omitFromDatabaseJson) {
-      Object.defineProperty(model, '$$omitFromDatabaseJson', {
-        enumerable: false,
-        value: keys.slice()
-      });
-    } else {
-      _.each(keys, key => model.$$omitFromDatabaseJson.push(key));
-    }
-  } else {
-    if (!model.$$omitFromJson) {
-      Object.defineProperty(model, '$$omitFromJson', {
-        enumerable: false,
-        value: keys.slice()
-      });
-    } else {
-      _.each(keys, key => model.$$omitFromJson.push(key));
-    }
-  }
-}
-
-/**
- * @private
- */
 function pickObject(model, keyObj) {
   const ModelClass = model.constructor;
 
@@ -941,9 +530,6 @@ function pickObject(model, keyObj) {
   });
 }
 
-/**
- * @private
- */
 function pickArray(model, keys) {
   const ModelClass = model.constructor;
 
@@ -954,9 +540,6 @@ function pickArray(model, keys) {
   });
 }
 
-/**
- * @private
- */
 function contains(arr, value) {
   for (let i = 0, l = arr.length; i < l; ++i) {
     if (arr[i] === value) {
