@@ -127,6 +127,22 @@ module.exports = function (session) {
       expect(models[0].model1Relation2).to.equal(undefined);
     });
 
+    test('model1Relation1.^2', function (models) {
+      expect(models).to.have.length(1);
+      expect(models[0]).to.be.a(Model1);
+
+      expect(models[0].model1Relation1).to.be.a(Model1);
+      expect(models[0].model1Relation1.id).to.equal(2);
+      expect(models[0].model1Relation1.model1Prop1).to.equal('hello 2');
+
+      expect(models[0].model1Relation1.model1Relation1).to.be.a(Model1);
+      expect(models[0].model1Relation1.model1Relation1.id).to.equal(3);
+      expect(models[0].model1Relation1.model1Relation1.model1Prop1).to.equal('hello 3');
+
+      expect(models[0].model1Relation1.model1Relation1.model1Relation1).to.equal(undefined);
+      expect(models[0].model1Relation2).to.equal(undefined);
+    });
+
     test('model1Relation1(selectId).^', function (models) {
       expect(models).to.have.length(1);
       expect(models[0]).to.be.a(Model1);
@@ -166,7 +182,7 @@ module.exports = function (session) {
       expect(models[0].model1Relation1.model1Prop1).to.equal('hello 2');
 
       expect(models[0].model1Relation2).to.have.length(2);
-      _.sortBy(models[0].model1Relation2, 'idCol');
+      models[0].model1Relation2 = _.sortBy(models[0].model1Relation2, 'idCol');
 
       expect(models[0].model1Relation2[0]).to.be.a(Model2);
       expect(models[0].model1Relation2[1]).to.be.a(Model2);
@@ -220,7 +236,7 @@ module.exports = function (session) {
       expect(models[0].model1Relation1.model1Prop1).to.equal('hello 2');
 
       expect(models[0].model1Relation2).to.have.length(2);
-      _.sortBy(models[0].model1Relation2, 'idCol');
+      models[0].model1Relation2 = _.sortBy(models[0].model1Relation2, 'idCol');
 
       expect(models[0].model1Relation2[0]).to.be.a(Model2);
       expect(models[0].model1Relation2[1]).to.be.a(Model2);
@@ -231,7 +247,7 @@ module.exports = function (session) {
 
       expect(models[0].model1Relation2[0].model2Relation1).to.have.length(0);
       expect(models[0].model1Relation2[1].model2Relation1).to.have.length(2);
-      _.sortBy(models[0].model1Relation2[1].model2Relation1, 'id');
+      models[0].model1Relation2[1].model2Relation1 = _.sortBy(models[0].model1Relation2[1].model2Relation1, 'id');
 
       expect(models[0].model1Relation2[1].model2Relation1[0]).to.be.a(Model1);
       expect(models[0].model1Relation2[1].model2Relation1[1]).to.be.a(Model1);
@@ -252,7 +268,7 @@ module.exports = function (session) {
       expect(models[0].model1Relation1.model1Prop1).to.equal('hello 2');
 
       expect(models[0].model1Relation2).to.have.length(2);
-      _.sortBy(models[0].model1Relation2, 'idCol');
+      models[0].model1Relation2 = _.sortBy(models[0].model1Relation2, 'idCol');
 
       expect(models[0].model1Relation2[0]).to.be.a(Model2);
       expect(models[0].model1Relation2[1]).to.be.a(Model2);
@@ -263,7 +279,7 @@ module.exports = function (session) {
 
       expect(models[0].model1Relation2[0].model2Relation1).to.have.length(0);
       expect(models[0].model1Relation2[1].model2Relation1).to.have.length(2);
-      _.sortBy(models[0].model1Relation2[1].model2Relation1, 'id');
+      models[0].model1Relation2[1].model2Relation1 = _.sortBy(models[0].model1Relation2[1].model2Relation1, 'id');
 
       expect(models[0].model1Relation2[1].model2Relation1[0]).to.be.a(Model1);
       expect(models[0].model1Relation2[1].model2Relation1[1]).to.be.a(Model1);
@@ -346,10 +362,13 @@ module.exports = function (session) {
           .eager('model1Relation2.model2Relation1.[model1Relation1, model1Relation2]')
           .first()
           .pick(['id', 'idCol', 'model1Relation1', 'model1Relation2', 'model2Relation1'])
+          .filterEager('model1Relation2', function (builder) {
+            builder.orderBy('id_col');
+          })
+          .filterEager('model1Relation2.model2Relation1', function (builder) {
+            builder.orderBy('id');
+          })
           .then(function (model) {
-            _.sortBy(model.model1Relation2, 'idCol');
-            _.sortBy(model.model1Relation2[1].model2Relation1, 'id');
-
             expect(model.toJSON()).to.eql({
               id: 1,
               model1Relation2: [{
@@ -383,10 +402,13 @@ module.exports = function (session) {
           .first()
           .pick(Model1, ['id', 'model1Relation1', 'model1Relation2'])
           .pick(Model2, ['idCol', 'model2Relation1'])
+          .filterEager('model1Relation2', function (builder) {
+            builder.orderBy('id_col');
+          })
+          .filterEager('model1Relation2.model2Relation1', function (builder) {
+            builder.orderBy('id');
+          })
           .then(function (model) {
-            _.sortBy(model.model1Relation2, 'idCol');
-            _.sortBy(model.model1Relation2[1].model2Relation1, 'id');
-
             expect(model.toJSON()).to.eql({
               id: 1,
               model1Relation2: [{
@@ -423,10 +445,13 @@ module.exports = function (session) {
           .eager('model1Relation2.model2Relation1.[model1Relation1, model1Relation2]')
           .first()
           .omit(['model1Id', 'model1Prop1', 'model1Prop2', 'model2Prop1', 'model2Prop2'])
+          .filterEager('model1Relation2', function (builder) {
+            builder.orderBy('id_col');
+          })
+          .filterEager('model1Relation2.model2Relation1', function (builder) {
+            builder.orderBy('id');
+          })
           .then(function (model) {
-            _.sortBy(model.model1Relation2, 'idCol');
-            _.sortBy(model.model1Relation2[1].model2Relation1, 'id');
-
             expect(model.toJSON()).to.eql({
               id: 1,
               model1Relation2: [{
@@ -462,10 +487,13 @@ module.exports = function (session) {
           .first()
           .omit(Model1, ['model1Id', 'model1Prop1', 'model1Prop2'])
           .omit(Model2, ['model1Id', 'model2Prop1', 'model2Prop2'])
+          .filterEager('model1Relation2', function (builder) {
+            builder.orderBy('id_col');
+          })
+          .filterEager('model1Relation2.model2Relation1', function (builder) {
+            builder.orderBy('id');
+          })
           .then(function (model) {
-            _.sortBy(model.model1Relation2, 'idCol');
-            _.sortBy(model.model1Relation2[1].model2Relation1, 'id');
-
             expect(model.toJSON()).to.eql({
               id: 1,
               model1Relation2: [{
